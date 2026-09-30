@@ -13,7 +13,7 @@ import { wavesGLSL } from './waves.js';
 
 export const KINDS = ['atake', 'seki', 'kobaya'];
 export const SIDES = ['A', 'B'];         // A: Noshima (plain timber), B: the attackers (blackened)
-const LOD_D = [140, 650];                // distances at which the hull switches to LOD 1 and 2
+const LOD_D = [90, 600];                // distances at which the hull switches to LOD 1 and 2
 
 async function tex(loader, url, srgb, aniso) {
   const t = await loader.loadAsync(url);

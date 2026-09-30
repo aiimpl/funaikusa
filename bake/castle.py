@@ -219,18 +219,18 @@ def castle_all():
 def ground_mesh(mb):
     """The castle islands' own ground at 1 m (the game's terrain grid is 8 m, too coarse for the terraces and scarps).
     It covers the islands down to below the waterline; the game lowers its coarse terrain under it"""
-    for (cx, cz, rx, rz) in ((0.0, 0.0, 135.0, 130.0), (-9.0, 191.0, 95.0, 75.0)):
+    for (cx, cz, rx, rz) in ((0.0, 0.0, 150.0, 145.0), (-9.0, 191.0, 105.0, 85.0)):
         xs = np.arange(cx - rx, cx + rx + 0.1, 1.0)
         zs = np.arange(cz - rz, cz + rz + 0.1, 1.0)
         X, Z = np.meshgrid(xs, zs)
         Hh = castle_island(X, Z)
         nx = len(xs)
-        V = [(float(Z[j, i]), float(X[j, i]), float(max(Hh[j, i], -4.0))) for j in range(len(zs)) for i in range(nx)]
+        V = [(float(Z[j, i]), float(X[j, i]), float(max(Hh[j, i], -9.0))) for j in range(len(zs)) for i in range(nx)]
         F, UV = [], []
         for j in range(len(zs) - 1):
             for i in range(nx - 1):
                 q = (j * nx + i, j * nx + i + 1, (j + 1) * nx + i + 1, (j + 1) * nx + i)
-                if max(Hh[j, i], Hh[j, i + 1], Hh[j + 1, i], Hh[j + 1, i + 1]) < -3.0:
+                if max(Hh[j, i], Hh[j, i + 1], Hh[j + 1, i], Hh[j + 1, i + 1]) < -8.0:
                     continue
                 F.append((q[0], q[3], q[2], q[1]))
                 UV.append(tuple((float(X[jj, ii]), float(Z[jj, ii])) for ii, jj in ((i, j), (i, j + 1), (i + 1, j + 1), (i + 1, j))))

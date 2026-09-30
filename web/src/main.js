@@ -26,6 +26,7 @@ import { makeHUD } from './hud.js';
 import { CrewView } from './crew.js';
 import { loadCastle } from './castle.js';
 import { Sound } from './audio.js';
+import { Film, FILM_LEN } from './film.js';
 
 const QS = new URLSearchParams(location.search);
 const RENDER = QS.has('render');
@@ -114,7 +115,7 @@ let lastLandSun = sunDir.clone();
 
 const crew = new CrewView(art, patch, U, wind);
 world.add(crew.group);
-for (const m of crew.casters()) shadows.addCaster(m, { ship: true });
+shadows.addCaster(crew.banner, { ship: true });      // the men are too small to be worth a shadow pass
 const fx = new FX(skyU, wind);
 scene.add(fx.lightGroup);
 const gunnery = new Gunnery(fx, sea);
@@ -130,7 +131,7 @@ if (QS.has('auto')) player.player = false;
 // the approach is made under sail; the masts come down when the fleets close (see battleStart)
 let battle = QS.has('alone') || QS.has('battle');
 for (const s of ships) { s.body.ctl.hoist = battle ? 0 : 1; s.body.hoist = s.body.ctl.hoist; s.mastDown = battle ? 1 : 0; if (!s.player) s.body.ctl.beatL = s.body.ctl.beatR = 1; }
-for (const g of player.guns) g.full = GUN[g.type].reload;
+for (const g of player.guns) { g.full = GUN[g.type].reload; g.reload = 0; }      // loaded before the battle
 
 // ---- Water
 const KIND_N = { atake: 0, seki: 1, kobaya: 2 };
@@ -156,7 +157,7 @@ scene.traverse((o) => { if (o.material?.isMeshStandardMaterial) o.material.envMa
 const input = new Input();
 const cam = new OrbitCam(camera, canvas);
 cam.ground = NOLAND ? null : islands.height;
-{ const m = player.meta; cam.bowAt = new THREE.Vector3(0, m.deck_top + 1.7, m.box ? m.box.y1 - 3.5 : m.L * 0.2); }
+{ const m = player.meta; cam.bowAt = new THREE.Vector3(0.9, m.deck_top + 2.9, m.box ? m.box.y1 - 5.0 : m.L * 0.2); }
 cam.dist = 60;
 input.onPress = (code) => {
   if (code === 'KeyC') cam.cycle();
@@ -174,7 +175,7 @@ aimLine.frustumCulled = false;
 world.add(aimLine);
 function updateAim() {
   const g = player.guns[0];
-  aimLine.visible = !!g && battle;
+  aimLine.visible = !!g && battle && !RENDER;
   if (!aimLine.visible) return;
   const b = player.body;
   const muzzle = b.toWorld(new THREE.Vector3().copy(g.at).add(new THREE.Vector3(0, 0, 0.6)), new THREE.Vector3());
@@ -201,6 +202,7 @@ document.getElementById('lang')?.addEventListener('click', (e) => { toggleLang()
 let started = RENDER || QS.has('skip') || QS.has('alone');
 const titleEl = document.getElementById('title');
 if (started) { titleEl.style.transition = 'none'; titleEl.classList.add('gone'); }
+else cam.set({ yaw: 2.6, pitch: 0.2, dist: 160 });       // behind the title: the fleet waiting in the channel
 for (const btn of document.querySelectorAll('.go')) {
   btn.disabled = false;
   btn.addEventListener('click', () => {
@@ -210,12 +212,21 @@ for (const btn of document.querySelectorAll('.go')) {
 }
 let ended = false;
 let camShip = null;         // the camera follows the player's ship unless told otherwise
+// Recording (?render): the film script fast-forwards the battle between shots and drives the camera (film.js)
+let film = null, filmT = 0, filmFade = 1;
 const sound = new Sound();
 for (const evn of ['pointerdown', 'keydown']) addEventListener(evn, () => sound.start(), { once: true });
 const _cr = new THREE.Vector3();
 // distance and pan of a world point for the listener (the camera)
 function ear(p) { _cr.set(1, 0, 0).applyQuaternion(camera.quaternion); const dx = p.x - camera.position.x, dz = p.z - camera.position.z, d = Math.hypot(dx, p.y - camera.position.y, dz) || 1; return [d, THREE.MathUtils.clamp((dx * _cr.x + dz * _cr.z) / d, -1, 1) * 0.8]; }
+const filmEv = [];          // (recording) sound events since the last recorded frame, for tools/audio.py
+let filmFire = 0;
 function sounds(dt, ev) {
+  if (RENDER) for (const e of ev) {
+    const at = e.at ?? e.world; if (!at || e.type === 'teppo' && e.kind !== 'fire') continue;
+    const [d, pan] = ear(at);
+    if (d < 1500) filmEv.push([+filmT.toFixed(3), e.kind, e.type, Math.round(d), +pan.toFixed(2)]);
+  }
   for (const e of ev) {
     if (e.kind === 'fire') { const [d, pan] = ear(e.at); sound.gun(d, pan, { oozutsu: 1, ishibiya: 0.4, teppo: 0.06 }[e.type] ?? 0.1); }
     else if (e.kind === 'splash' && e.type !== 'teppo') { const [d, pan] = ear(e.world); sound.splash(d, pan, e.type === 'oozutsu'); }
@@ -225,6 +236,7 @@ function sounds(dt, ev) {
   for (const s of ships) { const f = Math.max(...s.fire); if (f > 0) fire = Math.max(fire, f * Math.min(1, 60 / Math.max(s.body.pos.distanceTo(camera.position), 1))); }
   const b = player.body;
   sound.battle(dt, { beat: Math.round((b.ctl.beatL + b.ctl.beatR) / 2), stroke: b.stroke, fire, on: battle });
+  filmFire = fire;
   sound.update(dt, { speed: b.speed, aw: b.appWind.length() || wind.speed, gust: wind.gust(b.pos.x, b.pos.z, simT), roll: b.heel, rollRate: b.angV.dot(b.forward(_cr.clone())), heave: b.vel.y,
     flog: b.sail.flog, force: b.sail.force, landDir: null, evening: false });
 }
@@ -260,6 +272,9 @@ function fleetNews() {
 const clipUnder = new THREE.Plane(new THREE.Vector3(0, -1, 0), 0);
 function renderReflection() {
   if (trees) trees.group.visible = false;
+  crew.group.visible = false;          // (too small in the half-resolution mirror)
+  const tileVis = islands.tiles?.map((t) => [t.hi.visible, t.lo.visible]);
+  islands.tiles?.forEach((t) => { t.hi.visible = false; t.lo.visible = true; });   // the coarse land is plenty in the mirror
   world.scale.y = -1; world.updateMatrixWorld(true);
   shadows.uniforms.uMirror.value = -1;
   renderer.clippingPlanes = [clipUnder];
@@ -267,6 +282,8 @@ function renderReflection() {
   renderer.clippingPlanes = [];
   world.scale.y = 1; world.updateMatrixWorld(true);
   if (trees) trees.group.visible = true;
+  crew.group.visible = true;
+  islands.tiles?.forEach((t, i) => { t.hi.visible = tileVis[i][0]; t.lo.visible = tileVis[i][1]; });
   shadows.uniforms.uMirror.value = 1;
   renderer.setRenderTarget(null);
 }
@@ -289,8 +306,8 @@ addEventListener('keydown', (e) => {
 // near ships (to the camera) get the full hull and the fine step; the rest are stepped at half the rate
 function stepSim(dt) {
   controls(dt);
-  for (const s of ships) s.body.setDetail(s === player || s.body.pos.distanceTo(camera.position) < 200);
-  for (const s of ships) if (!s.alive) s.body.setDetail(false);
+  // only the player's ship gets the full hull at the fine step; the rest float on a coarse set of columns at 60 Hz
+  for (const s of ships) s.body.setDetail(s === player && s.alive);
   acc += dt;
   while (acc >= DT) {
     acc -= DT; simT += DT;
@@ -315,25 +332,51 @@ function advanceClock(dt) {
   if (Math.abs(hour - envAt) > 0.25) { rebuildEnv(); envAt = hour; }
 }
 const _f = new THREE.Vector3();
+const PROF = {};
+const prof = (k, t0) => { PROF[k] = (PROF[k] ?? 0) * 0.95 + (performance.now() - t0) * 0.05; };
+// triangles and draw calls of one whole frame (all passes)
+window.__count = () => {
+  const r = {}; const orig = renderer.render.bind(renderer);
+  renderer.info.autoReset = false;
+  renderer.render = (sc, cm) => { const c0 = renderer.info.render.calls, t0 = renderer.info.render.triangles; orig(sc, cm); const k = renderer.getRenderTarget() === rtRefl ? 'refl' : cm.isOrthographicCamera ? 'shadow/post' : 'main'; r[k] = r[k] ?? { calls: 0, tris: 0 }; r[k].calls += renderer.info.render.calls - c0; r[k].tris += renderer.info.render.triangles - t0; };
+  frame(1 / 60);
+  renderer.render = orig; renderer.info.autoReset = true;
+  return r;
+};
+// triangles per group of the world (instance counts included), to see where the weight is
+window.__weight = () => {
+  const tri = (o) => { let n = 0; o.traverse((m) => { if (!m.isMesh || !m.visible) return; const g = m.geometry; const t = (g.index ? g.index.count : g.attributes.position.count) / 3; n += t * (m.isInstancedMesh ? m.count : 1) * (g.isInstancedBufferGeometry ? g.instanceCount : 1); }); return Math.round(n); };
+  const out = {};
+  world.children.forEach((c, i) => { out[`${i}:${c.type}:${c.children.length}`] = tri(c); });
+  out.island_hi = islands.tiles?.filter((t) => t.hi.visible).length;
+  return out;
+};
+window.__prof = () => Object.fromEntries(Object.entries(PROF).map(([k, v]) => [k, +v.toFixed(2)]));
 function frame(dt) {
+  let t0 = performance.now();
   advanceClock(dt);
   stepSim(dt);
+  prof('sim', t0); t0 = performance.now();
   if (started) battleStart();
   const ev = gunnery.update(dt, simT, ships);
   if (started) fleet.update(dt, simT, ev);
   sounds(dt, ev);
+  prof('fleet', t0); t0 = performance.now();
   for (const s of ships) if (s.body.hoist > 0.02) s.body.ctl.brace = s.body.autoBrace();
   fx.setAmbient(hemi.color, hemi.groundColor);
   fx.update(dt, simT, camera);
+  prof('fx', t0); t0 = performance.now();
   view.update(ships, camera.position, simT);
   crew.update(ships, camera.position, simT);
+  prof('view', t0); t0 = performance.now();
   const b = player.body;
   b.forward(_f);
   // the wake patch follows the player; the nearest ships press on it, and balls that landed ring out in it
   const near = ships.filter((s) => s.alive || s.body.pos.y > -2).sort((p, q) => p.body.pos.distanceToSquared(b.pos) - q.body.pos.distanceToSquared(b.pos)).slice(0, 8);
   wake.step(dt, b.pos, near.map((s) => { const f = s.body.forward(_f); return { pos: s.body.pos, fwd: new THREE.Vector2(f.x, f.z).normalize(), speed: Math.hypot(s.body.vel.x, s.body.vel.z), heave: s.body.heave, sub: s.alive ? 1 : 0.5, kind: KIND_N[s.kind] }; }),
     ev.filter((e) => e.kind === 'splash' && e.type !== 'teppo').map((e) => ({ x: e.world.x, z: e.world.z, r: e.type === 'oozutsu' ? 1.6 : 0.9, h: e.type === 'oozutsu' ? 0.9 : 0.4 })));
-  cam.update(dt, camShip?.alive !== false && camShip ? camShip.body : b);
+  if (film) film.camera(filmT);
+  else cam.update(dt, camShip?.alive !== false && camShip ? camShip.body : b);
   updateAim();
   player.aimElev = aimElev; cam.aimElev = aimElev;
   hud.update({ ship: player, hour, wind, tide, target: fleet.flagshipOf(player.side === 'A' ? 'B' : 'A') ?? fleet.nearestEnemy(player), fleet, dt });
@@ -344,9 +387,12 @@ function frame(dt) {
   if (sunDir.angleTo(lastLandSun) > 0.003) { shadows.renderLand(new THREE.Vector3(b.pos.x, 0, b.pos.z)); lastLandSun.copy(sunDir); }
   skyU.uCloudT.value = simT;
   shadows.renderShip(new THREE.Vector3().copy(camera.position).lerp(cam.target, 0.8).setY(4));
+  prof('misc', t0); t0 = performance.now();
   renderReflection();
+  prof('refl', t0); t0 = performance.now();
   const adapt = 1 + 3.2 * THREE.MathUtils.smoothstep(-sunDir.y, -0.04, 0.16);
-  post.render(scene, camera, { exposure: EXPOSURE * adapt, t: simT, overlay: waterScene, thresh: 1.6 * adapt });
+  post.render(scene, camera, { exposure: EXPOSURE * adapt * filmFade, t: simT, overlay: waterScene, thresh: 1.6 * adapt });
+  prof('render', t0);
 }
 
 let rscale = 1, dtSum = 0, dtN = 0;
@@ -379,6 +425,8 @@ const st = (s) => ({ kind: s.kind, pos: s.body.pos.toArray().map((v) => +v.toFix
   mass: Math.round(s.body.mass), water: +s.body.water.toFixed(2), fatigue: +s.body.fatigue.toFixed(3), sunk: s.body.sunk });
 window.__ships = ships;
 window.__fleet = fleet;
+window.__camera = camera;
+window.__fx = fx;
 window.__fire = fireGuns;
 window.__aim = (e) => { aimElev = e; };
 window.__renderer = renderer;
@@ -427,10 +475,30 @@ window.__fast = (sec, dt = 1 / 30) => {
   const gap = Math.min(...A.map((a) => Math.min(...B.map((b) => a.body.pos.distanceTo(b.body.pos)))));
   return { t: +simT.toFixed(0), hour: +hour.toFixed(2), battle, ended, gap: Math.round(gap), A: sum('A'), B: sum('B'), log: fleet.log.length };
 };
+if (RENDER) {
+  started = true;
+  const fire = (s, i) => {
+    const g = s.guns[i % Math.max(s.guns.length, 1)]; if (!g) return;
+    const b = s.body;
+    const muzzle = b.toWorld(new THREE.Vector3().copy(g.at).add(new THREE.Vector3(0, 0, 0.6)), new THREE.Vector3());
+    gunnery.fire(g.type, s, muzzle, new THREE.Vector3(0, 0.02, 1).applyQuaternion(b.quat).normalize(), simT);
+    g.kick = 0.01; g.reload = GUN[g.type].reload;
+  };
+  const bowAt = (s) => { const m = s.meta; return new THREE.Vector3(0.9, m.deck_top + 2.9, m.box ? m.box.y1 - 5.0 : m.L * 0.2); };
+  film = new Film({ fleet, fast: (sec) => window.__fast(sec), camera, fire, bowAt, wind });
+}
 window.__renderAt = (f, fps) => {
   const target = f / fps;
+  if (film) {
+    while (filmT < target - 1e-6) { const d = Math.min(1 / fps, target - filmT); filmT += d; filmFade = film.apply(filmT).fade; frame(d); }
+    const evs = filmEv.splice(0);
+    return { ...window.__state(), shot: film.shotAt(filmT)[0], ev: evs, fire: +filmFire.toFixed(2), battle };
+  }
   while (simT < target - 1e-6) frame(Math.min(1 / fps, target - simT));
   return window.__state();
 };
+window.__filmLen = FILM_LEN;
 window.__ready = true;
 if (!RENDER) requestAnimationFrame(loop);
+// recording: keep the compositor ticking (a screenshot waits for a fresh frame)
+else { const tick = () => requestAnimationFrame(tick); tick(); }

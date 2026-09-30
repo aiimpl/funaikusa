@@ -14,9 +14,9 @@ export const SCENARIOS = {
       ['seki', 'A', 240, -110, -1.9], ['seki', 'A', 150, -220, -1.9],
       ...Array.from({ length: 12 }, (_, i) => ['kobaya', 'A', 230 + (i % 4) * 22, -200 + Math.floor(i / 4) * 26 + (i % 2) * 8, -1.9]),
       // the attackers, coming up the channel from the west-north-west
-      ['atake', 'B', -900, -420, 1.25, { flagship: true }], ['atake', 'B', -1030, -330, 1.25],
-      ...Array.from({ length: 6 }, (_, i) => ['seki', 'B', -830 - (i % 3) * 60, -600 + Math.floor(i / 3) * 280 + (i % 3) * 30, 1.25]),
-      ...Array.from({ length: 6 }, (_, i) => ['kobaya', 'B', -800 - i * 30, -250 + (i % 2) * 30, 1.25]),
+      ['atake', 'B', -1100, -420, 1.25, { flagship: true }], ['atake', 'B', -1230, -330, 1.25],
+      ...Array.from({ length: 6 }, (_, i) => ['seki', 'B', -1030 - (i % 3) * 60, -600 + Math.floor(i / 3) * 280 + (i % 3) * 30, 1.25]),
+      ...Array.from({ length: 6 }, (_, i) => ['kobaya', 'B', -1000 - i * 30, -250 + (i % 2) * 30, 1.25]),
     ],
   },
   oozutsu: {

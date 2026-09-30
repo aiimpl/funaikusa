@@ -56,17 +56,18 @@ def castle_island(X, Z):
     the waterline (the rock-cut post holes are there) and a sand beach on the north side (the landing).
     Taizaki-jima to the south: a smaller hill with its top levelled"""
     out = np.full_like(X, -60.0)
-    for (cx, cz, rx, rz, top, levels, seed) in ((0, 0, 108, 102, 25.0, (25.0, 18.5, 11.5), 91), (-9, 191, 48, 28, 22.0, (22.0, 14.0), 92)):
+    for (cx, cz, rx, rz, top, levels, seed) in ((0, 0, 108, 102, 25.0, (25.0, 18.5, 11.5), 91), (-9, 191, 48, 28, 22.0, (22.0,), 92)):
         dx, dz = X - cx, Z - cz
         warp = 1 + 0.12 * (pnoise(X / 45 + seed, Z / 45, seed) - 0.5) + 0.05 * (pnoise(X / 12, Z / 12 + seed, seed + 1) - 0.5)
         r = np.hypot(dx / rx, dz / rz) * warp
         # a dome that drops fast at the shore: cliffs of 6-10 m round most of it
-        h = top * np.clip(1 - r ** 1.7, -0.5, 1) + np.where(r > 0.8, -top * 0.25 * (r - 0.8) / 0.2, 0)
+        prof = 1.7 if cx == 0 else 2.4
+        h = top * np.clip(1 - r ** prof, -0.5, 1) + np.where(r > 0.8, -top * 0.25 * (r - 0.8) / 0.2, 0)
         h = np.where(r < 1.0, h, -8 - 25 * (r - 1))
         # terraces: flatten into levels with short steep scarps between
         q = h.copy()
         for k, L in enumerate(levels):
-            nxt = levels[k + 1] if k + 1 < len(levels) else 5.0
+            nxt = levels[k + 1] if k + 1 < len(levels) else (5.0 if cx == 0 else L - 4.0)
             band = (h > nxt + 1.5) & (h <= L + 3.0)
             q = np.where(band, np.minimum(L, nxt + 1.5 + (h - nxt - 1.5) * 4.0), q)
         if cx == 0:

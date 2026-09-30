@@ -39,6 +39,7 @@ def main():
         b = p.chromium.launch(channel="chrome", headless=False, args=["--window-position=-3400,0", "--ignore-gpu-blocklist"])
         pg = b.new_page(viewport={"width": 1600, "height": 900}, device_scale_factor=2)
         pg.on("pageerror", lambda e: log.append(f"[pageerror] {e}"))
+        pg.set_default_timeout(300000)
         pg.goto(f"http://127.0.0.1:{port}/index.html?render{os.environ.get('QUERY', '')}")
         pg.wait_for_function("window.__ready === true", timeout=180000)
         pg.evaluate("document.fonts.ready")

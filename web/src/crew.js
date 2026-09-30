@@ -60,7 +60,7 @@ export function crewGeometries() {
     // kobaya rower standing at his oar, pushing the loom (sculling)
     rower: merge([figure({ arms: 'forward', lean: 0.35, coat: [0.06, 0.07, 0.1] })]),
     // back flag (sashimono): pole and a small upright flag, coloured per instance
-    flag: merge([prop('cyl', { r0: 0.012, r1: 0.012, len: 1.4, at: [0, 1.85, -0.2], col: WOOD }), prop('box', { size: [0.02, 0.62, 0.36], at: [0, 2.25, -0.38], col: [1, 1, 1] })]),
+    flag: merge([prop('cyl', { r0: 0.012, r1: 0.012, len: 1.1, at: [0, 1.7, -0.2], col: WOOD }), prop('box', { size: [0.02, 0.46, 0.28], at: [0, 2.0, -0.34], col: [1, 1, 1] })]),
   };
 }
 
@@ -141,8 +141,8 @@ export class CrewView {
       // across the bow wall
       for (let x = -bx + 0.6; x < bx - 0.5; x += 1.3) out.push([x, zt, box.y1 - 0.7, 0, 'gunner']);
       // spearmen and a warrior in the middle
-      for (let f = box.y0 + 2; f < box.y1 - 2; f += 2.4) for (const x of [-1.2, 1.2]) out.push([x + (Math.random() - 0.5) * 0.6, zt, f, Math.random() * 6.28, 'spear']);
-      out.push([0, zt, box.y1 - 3, 0, 'samurai'], [0.8, zt, (box.y0 + box.y1) / 2, 0.5, 'samurai']);
+      for (let f = box.y0 + 2; f < box.y1 - 5; f += 2.4) for (const x of [-1.2, 1.2]) out.push([x + (Math.random() - 0.5) * 0.6, zt, f, Math.random() * 6.28, 'spear']);
+      out.push([1.6, zt, box.y1 - 5.5, 0, 'samurai'], [0.8, zt, (box.y0 + box.y1) / 2, 0.5, 'samurai']);
     } else {
       for (const th of m.tholes) out.push([th[1] - Math.sign(th[1]) * 1.1, th[2] - 0.35, th[0], Math.sign(th[1]) > 0 ? -Math.PI / 2 : Math.PI / 2, 'rower']);
       for (let f = -2.5; f < 3; f += 1.1) out.push([(Math.random() - 0.5) * 0.4, m.deck_top, f, Math.random() * 6.28, f > 1 ? 'gunner' : 'spear']);

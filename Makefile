@@ -50,15 +50,15 @@ preview:
 	for k in $(KINDS); do $(B) -P bake/warship.py -- preview $$k build/preview; done
 	$(B) -P bake/guns.py -- preview build/preview
 
-# The film (film.js): 780 frames at 2x, about 15 min on an Apple M Mac; resumes if interrupted
+# The film (film.js): about 900 frames at 2x, 20-40 min on an Apple M Mac; resumes if interrupted
 frames:
 	$(PY) tools/render.py build/frames 0 -1 30
 
 audio: frames
-	$(PY) tools/audio.py build/frames build/shiomachi.wav 30
+	$(PY) tools/audio.py build/frames build/funaikusa.wav 30
 
 video: audio
-	sh tools/encode.sh build/frames build/shiomachi.wav build/shiomachi.mp4
+	sh tools/encode.sh build/frames build/funaikusa.wav build/funaikusa.mp4
 
 # Syntax check of the Python side
 check:
