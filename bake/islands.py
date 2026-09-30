@@ -61,7 +61,7 @@ def castle_island(X, Z):
         warp = 1 + 0.12 * (pnoise(X / 45 + seed, Z / 45, seed) - 0.5) + 0.05 * (pnoise(X / 12, Z / 12 + seed, seed + 1) - 0.5)
         r = np.hypot(dx / rx, dz / rz) * warp
         # a dome that drops fast at the shore: cliffs of 6-10 m round most of it
-        h = top * np.clip(1 - r ** 3.2, -0.5, 1)
+        h = top * np.clip(1 - r ** 1.7, -0.5, 1) + np.where(r > 0.8, -top * 0.25 * (r - 0.8) / 0.2, 0)
         h = np.where(r < 1.0, h, -8 - 25 * (r - 1))
         # terraces: flatten into levels with short steep scarps between
         q = h.copy()
@@ -183,8 +183,9 @@ def near_map():
     # the sea floor keeps its depth: the rain's sediment may build a few metres of shelf off the beaches, never flats
     sea = base < 0
     H = np.where(sea, np.minimum(H, np.minimum(base + 4.0, -0.8)), H)
-    # the castle islands go in after the erosion (their terraces are made by hand, not by rain)
-    H = np.maximum(H, castle)
+    # the castle islands go in after the erosion (their terraces are made by hand, not by rain). The game draws them from
+    # their own 1 m mesh (castle.py), so this coarse grid is kept 3 m under that surface where it is above water
+    H = np.maximum(H, np.where(castle > -1.0, castle - 3.0, castle))
     return X, Z, H
 
 

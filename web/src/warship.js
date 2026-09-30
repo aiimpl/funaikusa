@@ -138,6 +138,15 @@ export async function loadFleetArt(base, { aniso = 8, patch, U, seaU }) {
       guns: (meta.guns ?? []).map(S2L),
     };
   }));
+  // the guns (bake/guns.py): bow gun and its bed, shared by every ship that carries them
+  {
+    const [map, orm, nrm, gltf] = await Promise.all([tex(tl, `${base}guns_base.webp`, true, aniso), tex(tl, `${base}guns_orm.webp`, false, aniso),
+      tex(tl, `${base}guns_nrm.webp`, false, aniso), gl.loadAsync(`${base}guns.glb`)]);
+    const m = new THREE.MeshStandardMaterial({ map, aoMap: orm, roughnessMap: orm, metalnessMap: orm, normalMap: nrm, roughness: 1, metalness: 1 });
+    patch?.(m);
+    const n = (x) => findNode(gltf.scene, x);
+    art.guns = { mat: m, gun: n('oozutsu').geometry, bed: n('oozutsu_bed').geometry, muzzle: 1.4 };
+  }
   art.sailMat = sailMaterial({ patch, U });
   art.sailGeo = sailGeometry();
   return art;
@@ -173,13 +182,15 @@ export class FleetView {
       const sa = new THREE.InstancedBufferAttribute(new Float32Array(M * 4), 4);
       sg.setAttribute('aSail', sa);
       s.sail = mk(sg, art.sailMat, M); s.sail.userData.attr = sa;
+      const ng = A.meta.guns?.length ?? 0;
+      if (ng) { s.gun = mk(art.guns.gun, art.guns.mat, M * ng); s.bed = mk(art.guns.bed, art.guns.mat, M * ng); }
       this.sets[k] = s;
     }
   }
   // meshes that cast shadows near the camera (the hull's LOD 0 and 1, masts, sails)
   casters() {
     const out = [];
-    for (const k of KINDS) { const s = this.sets[k]; for (const side of SIDES) out.push(s.hull[side][0], s.hull[side][1]); out.push(s.mast, s.yard, s.sail, s.oar); }
+    for (const k of KINDS) { const s = this.sets[k]; for (const side of SIDES) out.push(s.hull[side][0], s.hull[side][1]); out.push(s.mast, s.yard, s.sail, s.oar); if (s.gun) out.push(s.gun, s.bed); }
     return out;
   }
   update(ships, camPos, t) {
@@ -187,6 +198,7 @@ export class FleetView {
       const s = this.sets[k];
       for (const side of SIDES) for (const im of s.hull[side]) im.count = 0;
       s.mast.count = s.yard.count = s.rudder.count = s.oar.count = s.sail.count = 0;
+      if (s.gun) s.gun.count = s.bed.count = 0;
     }
     for (const sh of ships) {
       if (sh.gone) continue;
@@ -203,7 +215,7 @@ export class FleetView {
       _m2.compose(A.rudderPos, _q, _s); s.rudder.setMatrixAt(s.rudder.count++, _m2.premultiply(_m));
       // mast: pivots aft about its foot to lie on the fighting deck
       const down = THREE.MathUtils.smoothstep(sh.mastDown ?? 0, 0, 1) * 1.45;
-      _q.setFromAxisAngle(_v.set(1, 0, 0), down);
+      _q.setFromAxisAngle(_v.set(1, 0, 0), -down);
       _m2.compose(A.mastPos, _q, _s).premultiply(_m);
       s.mast.setMatrixAt(s.mast.count++, _m2);
       // the yard hangs on the mast (lowered to the deck before the mast comes down)
@@ -219,6 +231,21 @@ export class FleetView {
       const si = s.sail.count++;
       s.sail.setMatrixAt(si, sm);
       s.sail.userData.attr.setXYZW(si, hoist * (1 - down / 1.45), b.sail.depth, b.sail.side, b.sail.flog);
+      // bow guns behind their ports: the muzzle at the port; the barrel runs back after each shot and is hauled out again
+      if (s.gun && lod < 2 && sh.guns) {
+        for (let g = 0; g < sh.guns.length; g++) {
+          const gp = A.guns[g], G = sh.guns[g];
+          const k = G.kick ?? 0;
+          const off = k <= 0 ? 0 : k < 1 ? k * 0.9 : 0.9 * Math.max(0, 1 - (k - 1) / 0.9);
+          const back = this.art.guns.muzzle + 0.15 + off;
+          const el = sh.player ? (sh.aimElev ?? 0) : 0.02;
+          _q.setFromAxisAngle(_v.set(1, 0, 0), -el);
+          _m2.compose(_v.set(gp.x, gp.y, gp.z - back), _q, _s).premultiply(_m);
+          s.gun.setMatrixAt(s.gun.count++, _m2);
+          _m2.compose(_v.set(gp.x, gp.y, gp.z - back), _q.identity(), _s).premultiply(_m);
+          s.bed.setMatrixAt(s.bed.count++, _m2);
+        }
+      }
       // oars: sculling sway at each thole, both sides in step with the beat
       if (lod < 2 && sh.alive !== false) {
         const th = A.meta.tholes;
@@ -245,7 +272,7 @@ export class FleetView {
     for (const k of KINDS) {
       const s = this.sets[k];
       for (const side of SIDES) for (const im of s.hull[side]) { im.instanceMatrix.needsUpdate = true; im.userData.burn.needsUpdate = true; }
-      for (const im of [s.mast, s.yard, s.rudder, s.oar, s.sail]) im.instanceMatrix.needsUpdate = true;
+      for (const im of [s.mast, s.yard, s.rudder, s.oar, s.sail, s.gun, s.bed]) if (im) im.instanceMatrix.needsUpdate = true;
       s.sail.userData.attr.needsUpdate = true;
     }
   }

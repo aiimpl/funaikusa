@@ -1,6 +1,9 @@
 """Noise and droplet erosion shared by the island bakers (numpy only). Taken from hai-no-michi (MIT)."""
 import numpy as np
-from scipy.ndimage import gaussian_filter
+try:
+    from scipy.ndimage import gaussian_filter      # only the erosion needs it (Blender's Python has no scipy)
+except ImportError:
+    gaussian_filter = None
 
 
 def hash2(ix, iy, seed):

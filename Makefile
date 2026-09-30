@@ -5,7 +5,7 @@ B = $(BLENDER) -b --factory-startup --python-exit-code 1
 D = web/data
 C = build/check
 
-.PHONY: serve setup bake ships $(KINDS) guns islands preview frames audio video check clean
+.PHONY: serve setup bake ships $(KINDS) guns castle islands preview frames audio video check clean
 
 # Open http://127.0.0.1:8795/ after this
 serve:
@@ -16,7 +16,7 @@ setup:
 	.venv/bin/pip install -r requirements.txt
 
 # Rebuild all baked data: the three warship types and the guns in Blender (textures baked with Cycles), the islands with numpy
-bake: ships guns islands
+bake: ships guns islands castle
 
 KINDS = atake seki kobaya
 ships: $(KINDS)
@@ -34,6 +34,12 @@ guns:
 	sh tools/webp.sh $(D)/guns_base.png 90
 	sh tools/webp.sh $(D)/guns_orm.png 95
 	sh tools/webp.sh $(D)/guns_nrm.png 95
+
+castle:
+	mkdir -p $(C)
+	$(B) -P bake/castle.py -- bake $(D) $(C) 4096
+	sh tools/webp.sh $(D)/castle_base.png 90
+	sh tools/webp.sh $(D)/castle_orm.png 95
 
 islands:
 	mkdir -p $(C)

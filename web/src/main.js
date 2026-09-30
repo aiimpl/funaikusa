@@ -23,6 +23,9 @@ import { t, applyStatic, toggleLang } from './i18n.js';
 import { Fleet, ORDERS } from './fleet.js';
 import { setup as setupScenario, outcome, SCENARIOS } from './scenario.js';
 import { makeHUD } from './hud.js';
+import { CrewView } from './crew.js';
+import { loadCastle } from './castle.js';
+import { Sound } from './audio.js';
 
 const QS = new URLSearchParams(location.search);
 const RENDER = QS.has('render');
@@ -96,6 +99,8 @@ world.add(islands.group);
 for (const m of islands.shadowCasters) shadows.addCaster(m);
 const trees = NOLAND ? null : makeTrees(islands, patch, { clear: [[0, 0, 125], [-9, 191, 60]] });
 if (trees) world.add(trees.group);
+const castle = NOLAND ? null : await loadCastle('data/', { aniso: renderer.capabilities.getMaxAnisotropy(), patch });
+if (castle) { world.add(castle.group); for (const m of castle.meshes) shadows.addCaster(m); }
 const tide = new Tide(islands.map?.strait ?? { x: 285, z: 60, dir: 2.16, width: 240 });
 tide.setHour(hour);
 
@@ -107,6 +112,9 @@ for (const m of view.casters()) shadows.addCaster(m, { ship: true });
 shadows.renderLand(new THREE.Vector3());
 let lastLandSun = sunDir.clone();
 
+const crew = new CrewView(art, patch, U, wind);
+world.add(crew.group);
+for (const m of crew.casters()) shadows.addCaster(m, { ship: true });
 const fx = new FX(skyU, wind);
 scene.add(fx.lightGroup);
 const gunnery = new Gunnery(fx, sea);
@@ -114,9 +122,11 @@ world.add(gunnery.mesh);
 const fleet = new Fleet({ art, sea, wind, tide, ground: NOLAND ? null : islands.height, Hull, gunnery, fx });
 const ships = fleet.ships;
 // ?alone: just the player's ship (for looking at it and for the physics checks); ?kind= picks its type
-if (QS.has('alone')) fleet.add(QS.get('kind') ?? 'seki', 'A', 200, -400, -1.9, { player: true, flagship: true });
+if (QS.has('alone')) fleet.add(QS.get('kind') ?? 'seki', 'A', -300, 300, -1.9, { player: true, flagship: true });
 else setupScenario(fleet, SCEN);
 const player = ships.find((s) => s.player);
+// ?auto: the player's ship is steered by a captain too (for balancing the battles and for the film)
+if (QS.has('auto')) player.player = false;
 // the approach is made under sail; the masts come down when the fleets close (see battleStart)
 let battle = QS.has('alone') || QS.has('battle');
 for (const s of ships) { s.body.ctl.hoist = battle ? 0 : 1; s.body.hoist = s.body.ctl.hoist; s.mastDown = battle ? 1 : 0; if (!s.player) s.body.ctl.beatL = s.body.ctl.beatR = 1; }
@@ -179,6 +189,7 @@ function fireGuns() {
     const dir = new THREE.Vector3(0, Math.sin(aimElev), Math.cos(aimElev)).applyQuaternion(b.quat);
     gunnery.fire(g.type, player, muzzle, dir, simT);
     g.reload = GUN[g.type].reload;
+    g.kick = 0.01;
   }
 }
 const hud = makeHUD();
@@ -187,7 +198,7 @@ document.getElementById('lang')?.addEventListener('click', (e) => { toggleLang()
 // title card: the chosen battle starts at once if it is the one already set up behind the card, else the page reloads with it
 let started = RENDER || QS.has('skip') || QS.has('alone');
 const titleEl = document.getElementById('title');
-if (started) titleEl.classList.add('gone');
+if (started) { titleEl.style.transition = 'none'; titleEl.classList.add('gone'); }
 for (const btn of document.querySelectorAll('.go')) {
   btn.disabled = false;
   btn.addEventListener('click', () => {
@@ -196,6 +207,25 @@ for (const btn of document.querySelectorAll('.go')) {
   });
 }
 let ended = false;
+let camShip = null;         // the camera follows the player's ship unless told otherwise
+const sound = new Sound();
+for (const evn of ['pointerdown', 'keydown']) addEventListener(evn, () => sound.start(), { once: true });
+const _cr = new THREE.Vector3();
+// distance and pan of a world point for the listener (the camera)
+function ear(p) { _cr.set(1, 0, 0).applyQuaternion(camera.quaternion); const dx = p.x - camera.position.x, dz = p.z - camera.position.z, d = Math.hypot(dx, p.y - camera.position.y, dz) || 1; return [d, THREE.MathUtils.clamp((dx * _cr.x + dz * _cr.z) / d, -1, 1) * 0.8]; }
+function sounds(dt, ev) {
+  for (const e of ev) {
+    if (e.kind === 'fire') { const [d, pan] = ear(e.at); sound.gun(d, pan, { oozutsu: 1, ishibiya: 0.4, teppo: 0.06 }[e.type] ?? 0.1); }
+    else if (e.kind === 'splash' && e.type !== 'teppo') { const [d, pan] = ear(e.world); sound.splash(d, pan, e.type === 'oozutsu'); }
+    else if (e.kind === 'hit' && e.type !== 'teppo') { const [d, pan] = ear(e.world); sound.strike(d, pan); }
+  }
+  let fire = 0;
+  for (const s of ships) { const f = Math.max(...s.fire); if (f > 0) fire = Math.max(fire, f * Math.min(1, 60 / Math.max(s.body.pos.distanceTo(camera.position), 1))); }
+  const b = player.body;
+  sound.battle(dt, { beat: Math.round((b.ctl.beatL + b.ctl.beatR) / 2), stroke: b.stroke, fire, on: battle });
+  sound.update(dt, { speed: b.speed, aw: b.appWind.length() || wind.speed, gust: wind.gust(b.pos.x, b.pos.z, simT), roll: b.heel, rollRate: b.angV.dot(b.forward(_cr.clone())), heave: b.vel.y,
+    flog: b.sail.flog, force: b.sail.force, landDir: null, evening: false });
+}
 function battleStart() {
   if (battle) return;
   const enemies = ships.filter((s) => s.side !== player.side);
@@ -203,6 +233,7 @@ function battleStart() {
   if (!near) return;
   battle = true;
   hud.message(t('battle'), 5);
+  sound.conch();
   for (const s of ships) { s.body.ctl.hoist = 0; if (!s.player) s.body.ctl.beatL = s.body.ctl.beatR = 2; }
 }
 // messages for what happens in the fleet (only the notable things)
@@ -287,18 +318,21 @@ function frame(dt) {
   if (started) battleStart();
   const ev = gunnery.update(dt, simT, ships);
   if (started) fleet.update(dt, simT, ev);
+  sounds(dt, ev);
   for (const s of ships) if (s.body.hoist > 0.02) s.body.ctl.brace = s.body.autoBrace();
   fx.setAmbient(hemi.color, hemi.groundColor);
   fx.update(dt, simT, camera);
   view.update(ships, camera.position, simT);
+  crew.update(ships, camera.position, simT);
   const b = player.body;
   b.forward(_f);
   // the wake patch follows the player; the nearest ships press on it, and balls that landed ring out in it
   const near = ships.filter((s) => s.alive || s.body.pos.y > -2).sort((p, q) => p.body.pos.distanceToSquared(b.pos) - q.body.pos.distanceToSquared(b.pos)).slice(0, 8);
   wake.step(dt, b.pos, near.map((s) => { const f = s.body.forward(_f); return { pos: s.body.pos, fwd: new THREE.Vector2(f.x, f.z).normalize(), speed: Math.hypot(s.body.vel.x, s.body.vel.z), heave: s.body.heave, sub: s.alive ? 1 : 0.5, kind: KIND_N[s.kind] }; }),
     ev.filter((e) => e.kind === 'splash' && e.type !== 'teppo').map((e) => ({ x: e.world.x, z: e.world.z, r: e.type === 'oozutsu' ? 1.6 : 0.9, h: e.type === 'oozutsu' ? 0.9 : 0.4 })));
-  cam.update(dt, b);
+  cam.update(dt, camShip?.alive !== false && camShip ? camShip.body : b);
   updateAim();
+  player.aimElev = aimElev;
   hud.update({ ship: player, hour, wind, tide, target: fleet.flagshipOf(player.side === 'A' ? 'B' : 'A') ?? fleet.nearestEnemy(player), fleet, dt });
   fleetNews();
   ocean.update(camera);
@@ -349,6 +383,7 @@ window.__state = () => ({ t: +simT.toFixed(2), hour: +hour.toFixed(3), player: s
 window.__set = (o) => {
   if (o.hour !== undefined) { hour = o.hour; sunDirection(LAT, DAY, hour, sunDir); lightFromSun(); tide.setHour(hour); rebuildEnv(); envAt = hour; }
   if (o.cam) cam.set(o.cam);
+  if (o.follow !== undefined) camShip = o.follow === null ? null : ships[o.follow];
   if (o.ctl) Object.assign(player.body.ctl, o.ctl);
   if (o.place) player.body.place(...o.place);
   if (o.mastDown !== undefined) for (const s of ships) s.mastDown = o.mastDown;

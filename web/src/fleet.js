@@ -23,6 +23,18 @@ const S2L = (p) => new THREE.Vector3(p[1], p[2], p[0]);
 
 export const ORDERS = ['follow', 'scatter', 'surround', 'retreat'];
 
+// closest points between segments p0-p1 and q0-q1 (outputs into a, b)
+function closestSegSeg(p0, p1, q0, q1, a, b) {
+  const d1 = new THREE.Vector3().subVectors(p1, p0), d2 = new THREE.Vector3().subVectors(q1, q0), r = new THREE.Vector3().subVectors(p0, q0);
+  const A = d1.dot(d1), E = d2.dot(d2), F = d2.dot(r);
+  let s = 0, t = 0;
+  const C = d1.dot(r), Bb = d1.dot(d2), den = A * E - Bb * Bb;
+  s = den > 1e-9 ? THREE.MathUtils.clamp((Bb * F - C * E) / den, 0, 1) : 0;
+  t = (Bb * s + F) / E;
+  if (t < 0) { t = 0; s = THREE.MathUtils.clamp(-C / A, 0, 1); } else if (t > 1) { t = 1; s = THREE.MathUtils.clamp((Bb - C) / A, 0, 1); }
+  a.copy(p0).addScaledVector(d1, s); b.copy(q0).addScaledVector(d2, t);
+}
+
 export class Fleet {
   constructor({ art, sea, wind, tide, ground, Hull, gunnery, fx }) {
     this.art = art; this.sea = sea; this.wind = wind; this.tide = tide; this.ground = ground; this.Hull = Hull;
@@ -82,6 +94,46 @@ export class Fleet {
       if (s.body.sunk || s.body.water > s.body.V0 * 0.6) this.founder(s, t);
     }
     this.boarding(dt, t);
+    this.collide(dt);
+  }
+  // hulls do not pass through each other: each ship is a capsule (its centre line, radius half the beam); overlapping
+  // pairs are pushed apart at the contact point with a stiff spring and damper, and rub along with some friction
+  collide(dt) {
+    const S = this.ships.filter((s) => !s.gone && s.body.pos.y > -2);
+    const seg = (s, a, b) => { const f = s.body.forward(_f).setY(0).normalize(); const h = s.meta.L * 0.42; a.copy(s.body.pos).addScaledVector(f, -h).setY(0); b.copy(s.body.pos).addScaledVector(f, h).setY(0); };
+    const a0 = new THREE.Vector3(), a1 = new THREE.Vector3(), b0 = new THREE.Vector3(), b1 = new THREE.Vector3();
+    const pa = new THREE.Vector3(), pb = new THREE.Vector3();
+    for (let i = 0; i < S.length; i++) for (let j = i + 1; j < S.length; j++) {
+      const A = S[i], B = S[j];
+      const R = (A.meta.L + B.meta.L) * 0.5;
+      if (A.body.pos.distanceToSquared(B.body.pos) > R * R) continue;
+      seg(A, a0, a1); seg(B, b0, b1);
+      closestSegSeg(a0, a1, b0, b1, pa, pb);
+      const d = _v.subVectors(pb, pa); const L = d.length();
+      const rr = A.meta.B * 0.5 + B.meta.B * 0.5;
+      if (L >= rr || L < 1e-6) continue;
+      const n = d.divideScalar(L);
+      const pen = rr - L;
+      const m = Math.min(A.body.mass, B.body.mass);
+      const va = A.body.pointVel(pa.setY(0.3), new THREE.Vector3()), vb = B.body.pointVel(pb.setY(0.3), new THREE.Vector3());
+      const rv = vb.sub(va); rv.y = 0;
+      const vn = rv.dot(n);
+      const fn = Math.max(0, pen * m * 3.0 - vn * m * 1.2);
+      const vt = rv.clone().addScaledVector(n, -vn);
+      const J = n.clone().multiplyScalar(fn * dt).addScaledVector(vt, -0.25 * m * dt);
+      B.body.impulse(J, pb);
+      A.body.impulse(J.clone().negate(), pa);
+      // a hard ram hurts the lighter ship (planks sprung at the waterline)
+      // (once per meeting: the pair is remembered for a few seconds)
+      const key = A.id * 1000 + B.id;
+      this.rams ??= new Map();
+      if (A.side !== B.side && -vn > 2.5 && !(this.rams.get(key) > A.body.t)) {
+        this.rams.set(key, A.body.t + 4);
+        const hurt = A.body.mass < B.body.mass ? A : B;
+        hurt.body.hole(hurt.body.toLocal(hurt === A ? pa : pb, new THREE.Vector3()).setY(-0.2), 0.004 * (-vn));
+        this.note('rammed', hurt);
+      }
+    }
   }
   crewWork(s, dt) {
     // fighters split between the ports, the fires and the bailing
@@ -189,7 +241,11 @@ export class Fleet {
     if (s.broken && s.morale < 0.15) return;
     const b = s.body;
     const enemy = this.nearestEnemy(s, 450);
-    for (const g of s.guns) g.reload = Math.max(0, g.reload - dt * (0.4 + 0.6 * Math.min(1, (s.gunCrew ?? 0) / 10)));
+    for (const g of s.guns) {
+      g.reload = Math.max(0, g.reload - dt * (0.4 + 0.6 * Math.min(1, (s.gunCrew ?? 0) / 10)));
+      // the barrel runs in on the recoil (kick 0..1 fast), then is hauled out again over a few seconds (1..0)
+      if (g.kick > 0) g.kick = g.kick < 1 ? Math.min(1, g.kick + dt * 12) : (g.kick + dt * 0.25 > 1.9 ? 0 : g.kick + dt * 0.25);
+    }
     if (!enemy) return;
     const d = enemy.body.pos.distanceTo(b.pos);
     // muskets through the ports: a steady fire from the gunners, aimed at the enemy's fighting deck
@@ -241,6 +297,7 @@ export class Fleet {
       if (Math.abs(b.heel) > 0.06) continue;
       this.gunnery.fire(g.type, s, muzzle, dir.normalize(), t);
       g.reload = GUN[g.type].reload * (0.9 + Math.random() * 0.3);
+      g.kick = 0.01;
     }
   }
 

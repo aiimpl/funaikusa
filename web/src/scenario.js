@@ -3,7 +3,7 @@
 //   horoku  (after the first battle of Kizugawaguchi, 1576): the player leads the Noshima side, a seki-bune and a swarm
 //           of kobaya waiting in the lee of the castle island; a heavier fleet with two atake comes up the channel.
 //   oozutsu (after the second, 1578): the player commands an atake with three bow guns; the Noshima swarm comes at it.
-// Win: the enemy flagship taken or sunk, or two thirds of the enemy ships out of the fight. Lose: the player's ship
+// Win: the enemy flagship taken or sunk, or two thirds of the enemy ships out of the fight (sunk, taken or fled). Lose: the player's ship
 // sunk or taken, or two thirds of the player's side out of the fight.
 export const SCENARIOS = {
   horoku: {
@@ -37,12 +37,13 @@ export function setup(fleet, name) {
 }
 
 const out = (s) => !s.alive || s.taken || s.broken;
+const lost = (s) => !s.alive || s.taken;
 export function outcome(fleet, player) {
   if (!player.alive || player.taken) return 'lose';
   const enemy = player.side === 'A' ? 'B' : 'A';
   const E = fleet.ships.filter((s) => s.side === enemy), F = fleet.ships.filter((s) => s.side === player.side);
   const flag = E.find((s) => s.flagship);
-  if ((flag && out(flag)) || E.filter(out).length >= E.length * 2 / 3) return 'win';
+  if (E.length && ((flag && lost(flag)) || E.filter(out).length >= E.length * 2 / 3)) return 'win';
   if (F.filter(out).length >= F.length * 2 / 3) return 'lose';
   return null;
 }
