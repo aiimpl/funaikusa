@@ -1,0 +1,12 @@
+.venv/
+/build/
+/check/out/
+ref/*.jpg
+web/data/*.png
+__pycache__/
+*.blend1
+.DS_Store
+/check/
+bake/ship_ref.py
+ref/**/*.jpg
+ref/**/*.png
