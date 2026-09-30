@@ -155,6 +155,8 @@ scene.traverse((o) => { if (o.material?.isMeshStandardMaterial) o.material.envMa
 // ---- Camera and input
 const input = new Input();
 const cam = new OrbitCam(camera, canvas);
+cam.ground = NOLAND ? null : islands.height;
+{ const m = player.meta; cam.bowAt = new THREE.Vector3(0, m.deck_top + 1.7, m.box ? m.box.y1 - 3.5 : m.L * 0.2); }
 cam.dist = 60;
 input.onPress = (code) => {
   if (code === 'KeyC') cam.cycle();
@@ -242,8 +244,9 @@ function fleetNews() {
   for (; logN < fleet.log.length; logN++) {
     const e = fleet.log[logN];
     const k = t('kinds')[e.ship];
-    if (e.kind === 'taken') hud.message(t('taken')(k), 4);
-    else if (e.kind === 'sunk') hud.message(t('sunk')(k), 4);
+    const ours = e.side === player.side;
+    if (e.kind === 'taken') hud.message(t(ours ? 'takenUs' : 'takenThem')(k), 4);
+    else if (e.kind === 'sunk') hud.message(t(ours ? 'sunkUs' : 'sunkThem')(k), 4);
     else if (e.kind === 'broken' && e.side !== player.side) hud.message(t('broken')(k), 3);
   }
   if (ended) return;
@@ -332,7 +335,7 @@ function frame(dt) {
     ev.filter((e) => e.kind === 'splash' && e.type !== 'teppo').map((e) => ({ x: e.world.x, z: e.world.z, r: e.type === 'oozutsu' ? 1.6 : 0.9, h: e.type === 'oozutsu' ? 0.9 : 0.4 })));
   cam.update(dt, camShip?.alive !== false && camShip ? camShip.body : b);
   updateAim();
-  player.aimElev = aimElev;
+  player.aimElev = aimElev; cam.aimElev = aimElev;
   hud.update({ ship: player, hour, wind, tide, target: fleet.flagshipOf(player.side === 'A' ? 'B' : 'A') ?? fleet.nearestEnemy(player), fleet, dt });
   fleetNews();
   ocean.update(camera);

@@ -22,10 +22,10 @@ export const SCENARIOS = {
   oozutsu: {
     hour: 9.2, wind: [5.0, 0.3], player: 'B',
     ships: [
-      ['atake', 'B', -800, -400, 1.25, { player: true, flagship: true }], ['atake', 'B', -930, -300, 1.25],
-      ...Array.from({ length: 4 }, (_, i) => ['seki', 'B', -850 - (i % 2) * 70, -560 + Math.floor(i / 2) * 330, 1.25]),
+      ['atake', 'B', -800, -400, 1.25, { player: true, flagship: true }], ['atake', 'B', -930, -300, 1.25], ['atake', 'B', -950, -520, 1.25],
+      ...Array.from({ length: 5 }, (_, i) => ['seki', 'B', -850 - (i % 2) * 70 - Math.floor(i / 4) * 120, -600 + (Math.floor(i / 2) % 2) * 360, 1.25]),
       ['seki', 'A', 260, -40, -1.9, { flagship: true }], ['seki', 'A', 200, 60, -1.9], ['seki', 'A', 320, -160, -1.9],
-      ...Array.from({ length: 18 }, (_, i) => ['kobaya', 'A', 140 + (i % 6) * 26, -260 + Math.floor(i / 6) * 150 + (i % 2) * 10, -1.9]),
+      ...Array.from({ length: 16 }, (_, i) => ['kobaya', 'A', 140 + (i % 6) * 26, -260 + Math.floor(i / 6) * 150 + (i % 2) * 10, -1.9]),
     ],
   },
 };

@@ -219,7 +219,7 @@ def castle_all():
 def ground_mesh(mb):
     """The castle islands' own ground at 1 m (the game's terrain grid is 8 m, too coarse for the terraces and scarps).
     It covers the islands down to below the waterline; the game lowers its coarse terrain under it"""
-    for (cx, cz, rx, rz) in ((0.0, 0.0, 135.0, 130.0), (-9.0, 191.0, 70.0, 50.0)):
+    for (cx, cz, rx, rz) in ((0.0, 0.0, 135.0, 130.0), (-9.0, 191.0, 95.0, 75.0)):
         xs = np.arange(cx - rx, cx + rx + 0.1, 1.0)
         zs = np.arange(cz - rz, cz + rz + 0.1, 1.0)
         X, Z = np.meshgrid(xs, zs)

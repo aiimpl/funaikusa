@@ -23,8 +23,9 @@ export class OrbitCam {
   }
   set(o) { Object.assign(this, o); }
   // C cycles the view: behind the ship, on deck at the stern (the master's place), far off the beam
+  // (on a warship: behind the ship, at the bow guns looking along the line of fire, high over the whole battle)
   cycle() {
-    const modes = [{ yaw: 0.5, pitch: 0.16, dist: 48 }, { yaw: 0, pitch: 0.05, dist: 12 }, { yaw: 1.6, pitch: 0.08, dist: 160 }];
+    const modes = [{ yaw: 0.5, pitch: 0.16, dist: 60 }, { yaw: 0, pitch: 0.05, dist: 12 }, { yaw: 1.2, pitch: 0.55, dist: 520 }];
     this.mode = ((this.mode ?? 0) + 1) % modes.length;
     Object.assign(this, modes[this.mode]);
   }
@@ -36,6 +37,16 @@ export class OrbitCam {
       const dy = ((this.home.yaw - this.yaw + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI;
       this.yaw += dy * k; this.pitch += (this.home.pitch - this.pitch) * k; this.dist += (this.home.dist - this.dist) * k;
     }
+    // the gun layer's view: on the fighting deck over the bow guns, looking where they point
+    if (this.mode === 1 && this.bowAt) {
+      const p0 = boat.toWorld(this.bowAt, new THREE.Vector3());
+      const f = boat.forward(new THREE.Vector3());
+      f.y = 0; f.normalize();
+      this.c.position.copy(p0);
+      this.c.lookAt(p0.clone().addScaledVector(f, 100).add(new THREE.Vector3(0, -6 + Math.sin(this.aimElev ?? 0) * 100, 0)));
+      this.c.updateMatrixWorld();
+      return;
+    }
     // relative yaw is kept in the ship's frame, so the view turns with the ship
     const hd = boat.heading;
     const p = boat.pos;
@@ -44,6 +55,11 @@ export class OrbitCam {
     const h = Math.sin(this.pitch) * this.dist, r = Math.cos(this.pitch) * this.dist;
     const pos = new THREE.Vector3(this.target.x + Math.sin(a) * r, this.target.y + h, this.target.z + Math.cos(a) * r);
     pos.y = Math.max(pos.y, 1.6);
+    // keep above the land (the castle islands' coarse grid sits 3 m under their drawn ground)
+    if (this.ground) {
+      const g = this.ground(pos.x, pos.z);
+      if (g > -2) pos.y = Math.max(pos.y, g + 6.5);
+    }
     this.c.position.copy(pos);
     this.c.lookAt(this.target);
     this.c.updateMatrixWorld();

@@ -295,6 +295,10 @@ export class Fleet {
       dir.y += 0.5 * 9.81 * tof * tof * 1.15;
       // only fire as the bow rises through level, when the roll is small (the gunner waits for the sea)
       if (Math.abs(b.heel) > 0.06) continue;
+      // the gunner's judgement of range and lead is rough: the error grows with the distance
+      const e = 0.008 + d / 30000;
+      dir.normalize();
+      dir.x += (Math.random() - 0.5) * 2 * e; dir.z += (Math.random() - 0.5) * 2 * e; dir.y += (Math.random() - 0.5) * 1.6 * e;
       this.gunnery.fire(g.type, s, muzzle, dir.normalize(), t);
       g.reload = GUN[g.type].reload * (0.9 + Math.random() * 0.3);
       g.kick = 0.01;
